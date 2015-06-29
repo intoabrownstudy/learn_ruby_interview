@@ -1,0 +1,116 @@
+Create a new Rails application called model_tdd. Add rspec_rails to the Gemfile. Install RSpec.
+
+$ rails new model_tdd
+
+# Gemfile
+group :development, :test do
+  gem "rspec-rails"
+end
+
+$ bundle exec rails generate rspec:install
+Create a User model with an email attribute.
+
+$ rails g model User email
+$ rake db:migrate
+Add a test to make sure that the email attribute is populated when a User record is created.
+
+# spec/models/user_spec.rb
+it "is invalid without an email" do
+  expect(User.new(email: nil)).to have(1).errors_on(:email)
+end
+Notice that a User is instantiated, but not persisted in the database. It's faster to instantiate objects than create records in the database, so it's always preferable to instantiate objects in the test suite when possible.
+
+Verify that the test is failing by running $ bundle exec rspec spec/models/user_spec.rb. Then write some code to make the test pass.
+
+# app/models/user.rb
+validates :email, presence: true
+Write a test to make sure that the user's email is unique.
+
+# app/models/user_spec.rb
+it "duplicate emails are invalid" do
+  User.create(email: 'bob@gmail.com')
+  user = User.new(email: 'bob@gmail.com')
+  expect(user).to have(1).errors_on(:email)
+end
+This test creates one user in the database with the database with the email bob@gmail.com, so when another user is instantiated with the same email, it will be invalid. In this test, one user needs to be created in the database, but the second user only needs to be instantiated.
+
+Update the code to make the test pass.
+
+# app/models/user.rb
+validates :email, uniqueness: true
+Create a Post model with title, link, and user_id attributes.
+
+$ rails g model Post title link user_id:integer
+$ rake db:migrate
+Associate the Post and User models.
+
+# app/models/user.rb
+has_many :posts
+
+# app/models/post.rb
+belongs_to :user
+Write a test that checks post titles are unique for a given user. A given user cannot create a post with the same link twice, but another user can create a post with that link.
+
+# spec/models/post_spec.rb
+it "doesn't allow a given user to create multiple posts with the same link" do
+  user = User.create(email: 'bob@gmail.com')
+  user.posts.create(link: 'http://codequizzes.wordpress.com/')
+  post = user.posts.new(link: 'http://codequizzes.wordpress.com/')
+  expect(post).to have(1).errors_on(:link)
+end
+Write code to make the test pass.
+
+validates :link, uniqueness: { scope: :user_id }
+Write a test to make sure the Post class has a short_link method that returns the host of a link. For the link 'http://codequizzes.wordpress.com/#something-thats-real', the short_link method should return 'codequizzes.wordpress.com'.
+
+# spec/models/post_spec.rb
+context "#short_link" do
+  it "summarizes the link" do
+    post = Post.new(link: 'http://codequizzes.wordpress.com/#something-thats-real')
+    expect(post.short_link).to eq "codequizzes.wordpress.com"
+  end
+end
+Write code to make the test pass.
+
+# app/models/post.rb
+def short_link
+  URI.parse(link).host
+end
+Add a test to make sure that the Post link's format is valid. The link "blah blah blah" should be considered invalid.
+
+# spec/models/post_spec.rb
+it "doesn't allow links with invalid formats" do
+  post = Post.new(link: "blah blah blah")
+  expect(post).to have(1).errors_on(:link)
+end
+Make the test pass (hint: use the Ruby URI library).
+
+# app/models/post.rb
+validate :link_format
+
+private
+
+def link_format
+  unless valid_link?
+    errors.add(:link, "Invalid link format")
+  end
+end
+
+def valid_link?
+  begin
+    !!URI.parse(link)
+  rescue URI::InvalidURIError
+    false
+  end
+end
+Add a test to make sure the User model has a class method called by_letter that takes a letter and returns a sorted array of all users with an email that starts with that letter.
+
+context ".by_letter" do
+  it "returns a sorted array of emails that start with a certain letter" do
+    bob = User.create(email: 'bob@gmail.com')
+    frank = User.create(email: 'frank@gmail.com')
+    bill = User.create(email: 'bill@gmail.com')
+    expect(User.by_letter('b')).to eq [bill, bob]
+  end
+end
+Write code to make the test pass.
